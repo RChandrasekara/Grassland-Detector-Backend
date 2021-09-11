@@ -241,7 +241,7 @@ def upload_file():
                 road_map_processed = cloudinary.uploader.upload(img_byte_arr)
 
                 user = User.query.filter_by(id=int(user_id[0])).first()
-                email_sender(user.first_name, user.email, center, zoom, road_map_processed['secure_url'])
+                email_sender(user.first_name, user.email, center, float(zoom[0]), road_map_processed['secure_url'])
 
                 new_search = Search(user_id=int(user_id[0]), search_time=datetime.now(), request_map=ndvi_map['secure_url'],
                                     result_map=road_map_processed['secure_url'])
