@@ -18,6 +18,8 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import create_access_token
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail
+from flask_mail import Message
 
 
 UPLOAD_FOLDER = '../../maps'
@@ -39,8 +41,17 @@ cloudinary.config(cloud_name=os.getenv("CLOUD_NAME"),
                   api_key=os.getenv("CLOUDINARY_API_KEY"),
                   api_secret=os.getenv("CLOUDINARY_API_SECRET"))
 
+app.config['MAIL_SERVER']= os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = os.getenv('MAIL_PORT')
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+
+
 db = SQLAlchemy(app)
 db.init_app(app)
+mail = Mail(app)
 
 
 class User(db.Model):
@@ -207,6 +218,9 @@ def upload_file():
     if request.method == 'POST':
         user_id = dict(request.form).get('userId')
         maps = request.files.getlist('images')
+        center = dict(request.form).get('center')
+        center = center[0].split(',')
+        zoom = dict(request.form).get('zoom')
         if len(maps) != 2:
             flash('No file part')
             response = {
@@ -225,6 +239,9 @@ def upload_file():
                 temp.save(img_byte_arr, format='PNG')
                 img_byte_arr = img_byte_arr.getvalue()
                 road_map_processed = cloudinary.uploader.upload(img_byte_arr)
+
+                user = User.query.filter_by(id=int(user_id[0])).first()
+                email_sender(user.first_name, user.email, center, zoom, road_map_processed['secure_url'])
 
                 new_search = Search(user_id=int(user_id[0]), search_time=datetime.now(), request_map=ndvi_map['secure_url'],
                                     result_map=road_map_processed['secure_url'])
@@ -300,6 +317,22 @@ def delete_previous_searches():
             response = Response(json.dumps(response), status=404, mimetype="application/json")
             return response
 
+
+def email_sender(recipient_name, recipient_email, center, zoom, map):
+  lat = float(center[0])
+  lan = float(center[1])
+  msg = Message("Grassland detected successfully !", sender='navigation@grassland.io', recipients=[recipient_email])
+  msg.body = "Hey Paul, sending you this email from my Flask app, lmk if it works"
+  msg.html = '''<i>Hey {}</i>,
+  <p>Please <b>click</b> the following link to find the directions to the 
+  identified grassland location. Use this areas for the livestock.<br> Move your livestock to the the following areas</p>
+  <a href='https://www.google.com/maps/@{},{},{}z'>
+  https://www.google.com/maps/@{},{},{}z</a>
+  <p>Grassland map is displayed following for further references</p>
+  <img src="{}" 
+  alt="map not found" height="500px" width="900px"/>
+  '''.format(recipient_name, lat, lan, zoom, lat, lan, zoom, map)
+  mail.send(msg)
 
 if __name__ == "__main__":
     app.run(debug=True)
